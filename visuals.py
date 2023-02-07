@@ -19,10 +19,10 @@ plt.rcParams["animation.ffmpeg_path"] = r"D:\Programs\ffmpeg-5.1.2-essentials_bu
 
 
 class AnglePlot:
-    def __init__(self, fig: matplotlib.figure.Figure,
+    def __init__(self,
+                 theta_axis: axes.Axes, dtheta_axis: axes.Axes, tau_axis: axes.Axes,
                  theta_history: np.ndarray, dtheta_history: np.ndarray, tau_history: np.ndarray,
                  t_final: float, ticks_per_sec: int):
-        self.fig = fig
         self.theta_history = theta_history
         self.dtheta_history = dtheta_history
         self.tau_history = tau_history
@@ -32,11 +32,13 @@ class AnglePlot:
         
         self.joint_count = len(theta_history[:,0])
         
-        self.time_axis = np.linspace(0, self.t_final, len(theta_history[0,:]))
-        self.end_time = self.time_axis[-1]
+        self.time_values = np.linspace(0, self.t_final, len(theta_history[0,:]))
+        self.end_time = self.time_values[-1]
         self.ylimits = list(map(lambda history: (np.min(history) * 1.1, np.max(history) * 1.1), self.histories))
         
-        self.theta_axis, self.dtheta_axis, self.tau_axis = self.fig.subplots(3, 1)
+        self.theta_axis = theta_axis
+        self.dtheta_axis = dtheta_axis
+        self.tau_axis = tau_axis
         self.axes = (self.theta_axis, self.dtheta_axis, self.tau_axis)
 
         axis_ylabels = ["angle [rad]", "velocity [rad/s]", "torque [Nm]"]
@@ -66,7 +68,7 @@ class AnglePlot:
             for axis, (lower, upper) in zip(self.axes, self.ylimits):
                 axis.set_xbound(0, self.end_time)
                 axis.set_ybound(lower, upper)
-        time = self.time_axis[:index+1]
+        time = self.time_values[:index+1]
         for plots, history in zip((self.theta_plots, self.dtheta_plots, self.tau_plots), self.histories):
             for i, plot in enumerate(plots):
                 plot.set_data(time, history[i,:index+1])
@@ -137,7 +139,7 @@ def fk_frames(thetalist, Mlink_list, Mrotor_list, Slist) -> tuple[list[np.ndarra
 
 
 class ArmAnimation:
-    def __init__(self, fig: matplotlib.figure.Figure,
+    def __init__(self, ax: Axes3D,
                  theta_history: np.ndarray,
                  t_final: float, ticks_per_sec: int,
                  Mlink_list: np.ndarray, Mrotor_list: np.ndarray, Slist: np.ndarray):
@@ -149,9 +151,9 @@ class ArmAnimation:
         self.Mrotor_list = Mrotor_list
         self.Slist = Slist
         
-        self.fig = fig
-        self.ax: Axes3D = self.fig.add_subplot(111, projection="3d")
+        self.ax: Axes3D = ax
         self.ax.autoscale(enable=False, axis='both')
+        self.ax.set_box_aspect(aspect=(4, 4, 3), zoom=1.2)
         
         c_x, c_y, c_z = 0, 0, 0.5
         r_x, r_y, r_z = 1, 1, 1
@@ -176,23 +178,12 @@ class ArmAnimation:
         ]
 
         self.link_line, = self.ax.plot3D([0], [0], [0], "gray")
-        self.t_text = self.fig.text(
-            x=0.9, y=0.85,
-            s="t=0", fontsize=10, ha="left",
-            transform=self.fig.transFigure
-        )
-        self.fig.text(
-            x=0.8, y=0.85,
-            s="rgb=internal\nckm=joint",
-            fontsize=10, transform=self.fig.transFigure
-        )
-        
         self.artists = tuple(
             fd.artists
             for fd in itertools.chain(
                 [self.origin_frame], self.joint_frames_to_draw, self.internal_frames_to_draw,
             )
-        ) + (self.link_line, self.t_text)
+        ) + (self.link_line,)
 
     def draw_leg(self, *, joint_frames, internal_frames):
         # update origin frame
@@ -217,8 +208,6 @@ class ArmAnimation:
         joint_frames, internal_frames = fk_frames(thetalist, self.Mlink_list, self.Mrotor_list, self.Slist)
         
         self.draw_leg(joint_frames=joint_frames, internal_frames=internal_frames)
-        
-        self.t_text.set_text(f"t={round(frame_num/self.ticks_per_sec, 2)}")
 
 
 class FullAnimation:
@@ -231,19 +220,40 @@ class FullAnimation:
             self.fig = plt.figure()
         else:
             self.fig = fig
+        self.fig.set_figwidth(10)
+        self.fig.set_figheight(6)
+        
         self.t_final = t_final
         self.ticks_per_sec = ticks_per_sec
         self.total_ticks = int(t_final * ticks_per_sec)
         self.title = title
         
-        self.angle_anim_fig, self.arm_anim_fig = self.fig.subfigures(1, 2, width_ratios=[0.4, 0.6])
-        self.fig.tight_layout()
+        mosaic = [
+            ["theta", "arm"],
+            ["dtheta", "arm"],
+            ["tau", "arm"],
+        ]
+        gridspec_kw = {
+            "width_ratios": [0.4, 0.6],
+            "right": 0.94,
+            "wspace": 0.24
+        }
+        self.axd: dict[str, plt.Axes] = self.fig.subplot_mosaic(
+            mosaic,
+            gridspec_kw=gridspec_kw,
+        )
+        
+        # change arm axes to be 3d
+        ss = self.axd["arm"].get_subplotspec()
+        self.axd["arm"].remove()
+        self.axd["arm"] = self.fig.add_subplot(ss, projection="3d")
         
         self.arm_anim = ArmAnimation(
-            self.arm_anim_fig, theta_history, t_final, ticks_per_sec, Mlink_list, Mrotor_list, Slist 
+            self.axd["arm"], theta_history, t_final, ticks_per_sec, Mlink_list, Mrotor_list, Slist 
         )
         self.angle_anim = AnglePlot(
-            self.angle_anim_fig, theta_history, dtheta_history, tau_history, t_final, ticks_per_sec
+            self.axd["theta"], self.axd["dtheta"], self.axd["tau"],
+            theta_history, dtheta_history, tau_history, t_final, ticks_per_sec
         )
         
         self.anim: Optional[animation.FuncAnimation] = None
@@ -288,3 +298,12 @@ class FullAnimation:
             self.anim.save(filepath, writer=writer, dpi=250)
         else:
             plt.show()
+
+"""
+        self.t_text = self.ax.text(
+            x=0.9, y=0.85,
+            s="t=0", fontsize=10, ha="left",
+            transform=self.ax.transFigure
+        )
+        self.t_text.set_text(f"t={round(frame_num/self.ticks_per_sec, 2)}")
+"""
