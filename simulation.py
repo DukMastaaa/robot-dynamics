@@ -1,13 +1,8 @@
+from typing import Callable
 import numpy as np
 import modern_robotics as mr
 
-try:
-    from tqdm import tqdm
-except:
-    def transparent_iterator(it):
-        for x in it:
-            yield x
-    tqdm = transparent_iterator
+from tqdm import tqdm
 
 ### MATH HELPER FUNCTIONS
 
@@ -18,7 +13,7 @@ def wrap_2pi(angles):
     """
     return (angles + np.pi) % (2 * np.pi) - np.pi
 
-def clip(vec, abs_max):
+def clip(vec: np.ndarray, abs_max: np.ndarray):
     """
     Limits the magnitude of each element in vec to its corresponding
     element in abs_max.
@@ -34,7 +29,7 @@ def clip(vec, abs_max):
 
 ### SIMULATION FUNCTIONS
 
-def mass_matrix(thetalist, inverse_dynamics_function, params):
+def mass_matrix(thetalist: np.ndarray, inverse_dynamics_function: Callable, params):
     """
     Calculates the mass matrix at the given theta by building
     up the results from successive calls to the given
@@ -55,7 +50,7 @@ def mass_matrix(thetalist, inverse_dynamics_function, params):
         )
     return M
 
-def h_term(thetalist, dthetalist, inverse_dynamics_function, params):
+def h_term(thetalist: np.ndarray, dthetalist: np.ndarray, inverse_dynamics_function: Callable, params):
     """
     Calculates the term h(theta, dtheta) = c(theta, dtheta) + g(theta),
     by calling the given inverse_dynamics_function with signature:
@@ -69,9 +64,10 @@ def h_term(thetalist, dthetalist, inverse_dynamics_function, params):
         thetalist, dthetalist, ddthetalist, **params
     )
 
-def forward_dynamics_simulation(thetalist0, dthetalist0, tau_function,
-                                inverse_dynamics_function, params,
-                                t_final, N):
+def forward_dynamics_simulation(thetalist0: np.ndarray, dthetalist0: np.ndarray,
+                                tau_function: Callable, inverse_dynamics_function: Callable,
+                                params,
+                                t_final: float, N: int):
     """
     Computes the forward dynamics from t in [0, t_final] for N integration steps,
     given initial conditions and zero Ftip.
@@ -108,10 +104,6 @@ def forward_dynamics_simulation(thetalist0, dthetalist0, tau_function,
         # integrate
         theta_history[:,i+1] = theta_history[:,i] + dtheta_history[:,i] * delta_t
         dtheta_history[:,i+1] = dtheta_history[:,i] + ddthetalist * delta_t
-        
-        # print(i, theta_history[:,i], dtheta_history[:, i], ddthetalist, taulist-h)
-        # if (i+1) % 50 == 0:
-        #     print(i+1)
     
     tau_history[:,N-1] = tau_history[:,N-2]
 
@@ -120,7 +112,9 @@ def forward_dynamics_simulation(thetalist0, dthetalist0, tau_function,
 
 ### CONTROLLER CODE
 
-def tau_function_from_pid(kp, ki, kd, damping_coefficient, tau_abs_max, theta_ref_function):
+def tau_function_from_pid(kp: np.ndarray, ki: np.ndarray, kd: np.ndarray,
+                          damping_coefficient: float, tau_abs_max: np.ndarray,
+                          theta_ref_function: Callable):
     """
     Returns a function tau(t, delta_t, theta, dtheta) suitable for use with
     forward_dynamics_simulation, applying joint torques to enforce the
@@ -143,8 +137,8 @@ def tau_function_from_pid(kp, ki, kd, damping_coefficient, tau_abs_max, theta_re
         derror = (error - prev_error) / delta_t
         # again, numerical approximation using an accumulator
         integral = integral + theta * delta_t
-        # total torques from friction and PID
-        tau = friction + kp * error + ki * integral + kd * derror
+        # total torques from friction and PID. elementwise multiply
+        tau = friction + np.multiply(kp, error) + np.multiply(ki, integral) + np.multiply(kd, derror)
         # enforce torque limits
         tau = clip(tau, tau_abs_max)
         prev_error = error
@@ -158,18 +152,18 @@ def tau_function_from_pid(kp, ki, kd, damping_coefficient, tau_abs_max, theta_re
 def empty(n):
     return [None for _ in range(n)]
 
-def geared_inverse_dynamics(thetalist, dthetalist, ddthetalist,
-                            g, Ftip,
-                            Mlink_list, Mrotor_list,
-                            Glink, Grotor,
-                            Alist, Rlist,
-                            gear_ratios):
+def geared_inverse_dynamics(thetalist: np.ndarray, dthetalist: np.ndarray, ddthetalist: np.ndarray,
+                            g: np.ndarray, Ftip: np.ndarray,
+                            Mlink_list: np.ndarray, Mrotor_list: np.ndarray,
+                            Glink: np.ndarray, Grotor: np.ndarray,
+                            Alist: np.ndarray, Rlist: np.ndarray,
+                            gear_ratios: np.ndarray, **_):
     """
     Calculates the inverse dynamics for a geared system.
     Mlink_list is T_{i_{L}, (i-1)_{L}} in the textbook.
     Mrotor_list is T_{i_{R}, (i-1)_{L}} in the textbook.
-    Glink and Grotor are \mathcal{G}_{i_{L}} and
-    \mathcal{G}_{i_{R}} in the textbook.
+    Glink and Grotor are \\mathcal{G}_{i_{L}} and
+    \\mathcal{G}_{i_{R}} in the textbook.
     The rest of the parameters are defined as in
     mr.InverseDynamics.
     """
