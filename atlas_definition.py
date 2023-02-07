@@ -124,19 +124,30 @@ def moi_m_to_inertia(moi, mass):
 ## Rotor
 NEMA17_MASS_TOTAL = 1.05
 NEMA17_MOI = gfcm2_to_kgm2(110)
+NEMA17_HOLDING_TORQUE = 0.65  # Nm
 NEMA23_MASS_TOTAL = 2.24
 NEMA23_MOI = gfcm2_to_kgm2(480)  # this is a guess
+NEMA23_HOLDING_TORQUE = 3  # Nm
 
 m1_rotor = NEMA23_MASS_TOTAL
 moi1_rotor = NEMA23_MOI
+torque_lim_1 = NEMA23_HOLDING_TORQUE
+
 m2_rotor = NEMA23_MASS_TOTAL
 moi2_rotor = NEMA23_MOI
+torque_lim_2 = NEMA23_HOLDING_TORQUE
+
 m3_rotor = NEMA17_MASS_TOTAL
 moi3_rotor = NEMA17_MOI
+torque_lim_3 = NEMA17_HOLDING_TORQUE
+
 m4_rotor = NEMA17_MASS_TOTAL
 moi4_rotor = NEMA17_MOI
+torque_lim_4 = NEMA17_HOLDING_TORQUE
+
 m5_rotor = NEMA17_MASS_TOTAL
 moi5_rotor = NEMA17_MOI
+torque_lim_5 = NEMA17_HOLDING_TORQUE
 
 G1_rotor = rotor_inertia(m1_rotor, moi1_rotor, Dir.Z)
 G2_rotor = rotor_inertia(m2_rotor, moi2_rotor, Dir.Y)
@@ -144,6 +155,8 @@ G3_rotor = rotor_inertia(m3_rotor, moi3_rotor, Dir.Y)
 G4_rotor = rotor_inertia(m4_rotor, moi4_rotor, Dir.X)
 G5_rotor = rotor_inertia(m5_rotor, moi5_rotor, Dir.Y)
 Grotor_list = np.array([G1_rotor, G2_rotor, G3_rotor, G4_rotor, G5_rotor])
+
+torque_limits = np.array([torque_lim_1, torque_lim_2, torque_lim_3, torque_lim_4, torque_lim_5])
 
 # Link
 rho = 2710  # kg*m^3
@@ -178,6 +191,8 @@ geared_params = {
     "Grotor": Grotor_list,
     "Alist": None,
     "Rlist": Rlist,
+    "Slist": Slist,
+    "torque_limits": torque_limits,
     "gear_ratios": None
 }
 
