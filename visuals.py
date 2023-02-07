@@ -3,8 +3,10 @@ from typing import Optional
 import numpy as np
 import modern_robotics as mr
 
+from tqdm import tqdm
+
 from mpl_toolkits import mplot3d
-from mpl_toolkits.mplot3d import proj3d
+from mpl_toolkits.mplot3d import proj3d, Axes3D
 import matplotlib.pyplot as plt
 import matplotlib.axes as axes
 import matplotlib.animation as animation
@@ -20,7 +22,7 @@ def set_plot3d_data(plot3d, x, y, z):
     plot3d.set_3d_properties(z)
 
 class FrameDraw:
-    def __init__(self, ax: axes.Axes, name="", s="rgb", L=1):
+    def __init__(self, ax: Axes3D, name="", s="rgb", L=1):
         self.ax = ax
         self.L = L
 
@@ -29,7 +31,7 @@ class FrameDraw:
         self.z_line, = self.ax.plot3D([0], [0], [0], s[2] + "-")
 
         self.name = name
-        self.text = self.ax.text(0, 0, 0, self.name, fontsize=12)
+        self.text = self.ax.text(0, 0, 0, ss=self.name, fontsize=12)
         
         self.artists = (self.x_line, self.y_line, self.z_line, self.text)
     
@@ -45,16 +47,10 @@ class FrameDraw:
         set_plot3d_data(self.y_line, *np.array([origin, y_image]).T)
         set_plot3d_data(self.z_line, *np.array([origin, z_image]).T)
         # draw text
-        # x_text, y_text, _ = proj3d.proj_transform(*origin, self.ax.get_proj())
-        # # x_text, y_text = self.ax.transData.transform((x_text, y_text))
-        # print(origin, x_text, y_text)
-        # self.text.set_x(x_text)
-        # self.text.set_y(y_text)
-        # self.text.xy = (x_text, y_text)
         self.text.set_position_3d(origin)
 
 
-def fk_frames(thetalist, Mlink_list, Mrotor_list, Slist) -> tuple[np.ndarray, np.ndarray]:
+def fk_frames(thetalist, Mlink_list, Mrotor_list, Slist) -> tuple[list[np.ndarray], list[np.ndarray]]:
     """
     Returns a list of transformation matrices for each of the joint frames,
     at the given configuration, for the internal frames and joint frames.
@@ -92,7 +88,7 @@ class ArmAnimation:
         self.Slist = Slist
         
         self.fig = plt.figure()
-        self.ax = plt.axes(projection="3d")
+        self.ax: Axes3D = plt.axes(projection="3d")
         self.ax.autoscale(enable=False, axis='both')
         self.title = title
         
@@ -137,9 +133,11 @@ class ArmAnimation:
         
         self.paused = False
         self.fig.canvas.mpl_connect('key_press_event', self.key_press)
+        
+        self.pbar = None
     
     def key_press(self, event):
-        if event.key == " ":
+        if event.key == " " and self.anim is not None:
             if self.paused:
                 self.anim.resume()
             else:
@@ -171,8 +169,10 @@ class ArmAnimation:
         return self.artists
     
     def animation_tick(self, frame_num: int):
-        if frame_num % (max(1, self.total_ticks // 100)) == 0:
-            print(f"{frame_num} {round(frame_num/self.total_ticks*100)}%")
+        if self.pbar is not None:
+            self.pbar.update(1)
+            if frame_num + self.step >= self.total_ticks:
+                self.pbar.close()
         
         thetalist = self.theta_history[:,frame_num]
         
@@ -189,15 +189,16 @@ class ArmAnimation:
         return self.artists
 
     def animate(self, use_mp4: bool, filepath: str, fps: int):
-        step = max(1, int(self.ticks_per_sec / fps))
+        self.step = max(1, int(self.ticks_per_sec / fps))
         self.anim = animation.FuncAnimation(
-            self.fig, self.animation_tick, frames=range(0, self.total_ticks, step), init_func=self.animation_init,
+            self.fig, self.animation_tick, frames=range(0, self.total_ticks, self.step), init_func=self.animation_init,
             blit=False
             # blit=True
         )
+        self.pbar = tqdm(total=(self.total_ticks // self.step))
         if use_mp4:
-            writer = animation.FFMpegWriter(fps)
-            self.anim.save(filepath, writer=writer)
+            writer = animation.FFMpegWriter(fps=fps)
+            self.anim.save(filepath, writer=writer, dpi=250)
         else:
             plt.show()
 
@@ -238,21 +239,3 @@ def angle_plots(theta_history, dtheta_history, tau_history,
 
     plt.suptitle(f"Plots for {filename}")
     plt.show()
-
-def q2_plots(theta_history, dtheta_history, tau_history,
-             t_final, ticks_per_sec, fps, filename,
-             do_3d: bool, do_line: bool, do_tau: bool):
-    """
-    Generates a 3D video and/or line plots of theta, dtheta and tau,
-    given the histories of theta, dtheta and tau.
-    The bool flags are used to toggle the plots.
-    """
-    if do_3d:
-        full_video_3d(
-            theta_history, t_final, ticks_per_sec, fps, filename,
-        )
-    if do_line:
-        angle_plots(
-            theta_history, dtheta_history, tau_history,
-            t_final, ticks_per_sec, filename, do_tau
-        )
