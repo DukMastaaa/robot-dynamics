@@ -10,6 +10,7 @@ from mpl_toolkits.mplot3d import proj3d, Axes3D
 import matplotlib.pyplot as plt
 import matplotlib.axes as axes
 import matplotlib.animation as animation
+import matplotlib.figure
 
 # Set ffmpeg path to local executable path
 # https://www.youtube.com/watch?v=bNbN9yoEOdU
@@ -17,12 +18,70 @@ from matplotlib.animation import FFMpegWriter
 plt.rcParams["animation.ffmpeg_path"] = r"D:\Programs\ffmpeg-5.1.2-essentials_build\bin\ffmpeg.exe"
 
 
+class AnglePlot:
+    def __init__(self, fig: matplotlib.figure.Figure,
+                 theta_history: np.ndarray, dtheta_history: np.ndarray, tau_history: np.ndarray,
+                 t_final: float, ticks_per_sec: int):
+        self.fig = fig
+        self.theta_history = theta_history
+        self.dtheta_history = dtheta_history
+        self.tau_history = tau_history
+        self.t_final = t_final
+        self.ticks_per_sec = ticks_per_sec
+        self.histories = (self.theta_history, self.dtheta_history, self.tau_history)
+        
+        self.joint_count = len(theta_history[:,0])
+        
+        self.time_axis = np.linspace(0, self.t_final, len(theta_history[0,:]))
+        self.end_time = self.time_axis[-1]
+        self.ylimits = list(map(lambda history: (np.min(history) * 1.1, np.max(history) * 1.1), self.histories))
+        
+        self.theta_axis, self.dtheta_axis, self.tau_axis = self.fig.subplots(3, 1)
+        self.axes = (self.theta_axis, self.dtheta_axis, self.tau_axis)
+
+        axis_ylabels = ["angle [rad]", "velocity [rad/s]", "torque [Nm]"]
+        for axis, ylabel in zip(self.axes, axis_ylabels):
+            axis.set_ylabel(ylabel)
+
+        self.tau_axis.set_xlabel("time [s]")
+        
+        mock_data = np.zeros((1, 5))
+        self.theta_plots = self.theta_axis.plot([0], mock_data)
+        self.dtheta_plots = self.dtheta_axis.plot([0], mock_data)
+        self.tau_plots = self.tau_axis.plot([0], mock_data)
+
+        labels = [f"joint {i+1}" for i in range(self.joint_count)]
+        # self.legend = self.fig.legend(
+        #     labels, loc='lower right', bbox_to_anchor=(1,-0.1), ncol=len(labels), bbox_transform=self.fig.transFigure
+        # )
+
+        # handles, labels = self.ax.get_legend_handles_labels()
+        # self.legend = self.fig.legend(handles, labels, loc='upper center')
+        
+        self.artists = tuple(self.theta_plots + self.dtheta_plots + self.tau_plots) + self.axes \
+            # + (self.legend,)
+
+    def update(self, index):
+        if index == 0:
+            for axis, (lower, upper) in zip(self.axes, self.ylimits):
+                axis.set_xbound(0, self.end_time)
+                axis.set_ybound(lower, upper)
+        time = self.time_axis[:index+1]
+        for plots, history in zip((self.theta_plots, self.dtheta_plots, self.tau_plots), self.histories):
+            for i, plot in enumerate(plots):
+                plot.set_data(time, history[i,:index+1])
+
+        # self.theta_plot.set_data(time, (self.theta_history[:,:index+1]).T)
+        # self.dtheta_plot.set_data(time, (self.dtheta_history[:,:index+1]).T)
+        # self.tau_plot.set_data(time, (self.tau_history[:,:index+1]).T)
+
+
 def set_plot3d_data(plot3d, x, y, z):
     plot3d.set_data(x, y)
     plot3d.set_3d_properties(z)
 
 class FrameDraw:
-    def __init__(self, ax: Axes3D, name="", s="rgb", L=1):
+    def __init__(self, ax: Axes3D, name: str = "", s: str = "rgb", L: float = 1.0):
         self.ax = ax
         self.L = L
 
@@ -31,11 +90,11 @@ class FrameDraw:
         self.z_line, = self.ax.plot3D([0], [0], [0], s[2] + "-")
 
         self.name = name
-        self.text = self.ax.text(0, 0, 0, ss=self.name, fontsize=12)
+        self.text = self.ax.text(0, 0, 0, s=self.name, fontsize=12)
         
         self.artists = (self.x_line, self.y_line, self.z_line, self.text)
     
-    def update(self, T):
+    def update(self, T: np.ndarray):
         """Plots the frame defined by the transformation matrix T."""
         _, origin = mr.TransToRp(T)
         # get images of basis vectors in new frame
@@ -78,7 +137,10 @@ def fk_frames(thetalist, Mlink_list, Mrotor_list, Slist) -> tuple[list[np.ndarra
 
 
 class ArmAnimation:
-    def __init__(self, theta_history, t_final, ticks_per_sec, Mlink_list, Mrotor_list, Slist, title):
+    def __init__(self, fig: matplotlib.figure.Figure,
+                 theta_history: np.ndarray,
+                 t_final: float, ticks_per_sec: int,
+                 Mlink_list: np.ndarray, Mrotor_list: np.ndarray, Slist: np.ndarray):
         self.theta_history = theta_history
         self.ticks_per_sec = ticks_per_sec
         self.total_ticks = int(t_final * ticks_per_sec)
@@ -87,10 +149,9 @@ class ArmAnimation:
         self.Mrotor_list = Mrotor_list
         self.Slist = Slist
         
-        self.fig = plt.figure()
-        self.ax: Axes3D = plt.axes(projection="3d")
+        self.fig = fig
+        self.ax: Axes3D = self.fig.add_subplot(111, projection="3d")
         self.ax.autoscale(enable=False, axis='both')
-        self.title = title
         
         c_x, c_y, c_z = 0, 0, 0.5
         r_x, r_y, r_z = 1, 1, 1
@@ -99,7 +160,6 @@ class ArmAnimation:
         self.ax.set_zbound(c_z-r_z/2, c_z+r_z/2)
         self.ax.view_init(elev=12, azim=64)
         
-        self.ax.set_title(title)
         self.ax.set_xlabel("x [m]")
         self.ax.set_ylabel("y [m]")
         self.ax.set_zlabel("z [m]")
@@ -117,41 +177,23 @@ class ArmAnimation:
 
         self.link_line, = self.ax.plot3D([0], [0], [0], "gray")
         self.t_text = self.fig.text(
-            x=0.45, y=0.85,
+            x=0.9, y=0.85,
             s="t=0", fontsize=10, ha="left",
             transform=self.fig.transFigure
         )
-        self.fig.text(x=0.8, y=0.85, s="rgb=internal\nckm=joint", fontsize=10, transform=self.fig.transFigure)
+        self.fig.text(
+            x=0.8, y=0.85,
+            s="rgb=internal\nckm=joint",
+            fontsize=10, transform=self.fig.transFigure
+        )
         
-        self.anim: Optional[animation.FuncAnimation] = None
         self.artists = tuple(
             fd.artists
             for fd in itertools.chain(
                 [self.origin_frame], self.joint_frames_to_draw, self.internal_frames_to_draw,
             )
         ) + (self.link_line, self.t_text)
-        
-        self.paused = False
-        self.fig.canvas.mpl_connect('key_press_event', self.key_press)
-        
-        self.pbar = None
-    
-    def key_press(self, event):
-        if event.key == " " and self.anim is not None:
-            if self.paused:
-                self.anim.resume()
-            else:
-                self.anim.pause()
-            self.paused = not self.paused
 
-    def clear_plot(self):
-        """
-        Clears plot without clearing axes.
-        https://stackoverflow.com/a/43081720
-        """
-        for artist in plt.gca().lines + plt.gca().collections:
-            artist.remove()
-    
     def draw_leg(self, *, joint_frames, internal_frames):
         # update origin frame
         self.origin_frame.update(np.eye(4))
@@ -164,16 +206,8 @@ class ArmAnimation:
         # update link line
         origins = np.array([(T @ [0, 0, 0, 1])[:3] for T in joint_frames])
         set_plot3d_data(self.link_line, *origins.T)
-
-    def animation_init(self):
-        return self.artists
     
-    def animation_tick(self, frame_num: int):
-        if self.pbar is not None:
-            self.pbar.update(1)
-            if frame_num + self.step >= self.total_ticks:
-                self.pbar.close()
-        
+    def update(self, frame_num: int):
         thetalist = self.theta_history[:,frame_num]
         
         # get transformation matrices of joint frames, which coincide with the rotor frames.
@@ -185,7 +219,60 @@ class ArmAnimation:
         self.draw_leg(joint_frames=joint_frames, internal_frames=internal_frames)
         
         self.t_text.set_text(f"t={round(frame_num/self.ticks_per_sec, 2)}")
+
+
+class FullAnimation:
+    def __init__(self, fig: Optional[matplotlib.figure.Figure],
+                 theta_history: np.ndarray, dtheta_history: np.ndarray, tau_history: np.ndarray,
+                 t_final: float, ticks_per_sec: int,
+                 Mlink_list: np.ndarray, Mrotor_list: np.ndarray, Slist: np.ndarray,
+                 title: str):
+        if fig is None:
+            self.fig = plt.figure()
+        else:
+            self.fig = fig
+        self.t_final = t_final
+        self.ticks_per_sec = ticks_per_sec
+        self.total_ticks = int(t_final * ticks_per_sec)
+        self.title = title
         
+        self.angle_anim_fig, self.arm_anim_fig = self.fig.subfigures(1, 2, width_ratios=[0.4, 0.6])
+        self.fig.tight_layout()
+        
+        self.arm_anim = ArmAnimation(
+            self.arm_anim_fig, theta_history, t_final, ticks_per_sec, Mlink_list, Mrotor_list, Slist 
+        )
+        self.angle_anim = AnglePlot(
+            self.angle_anim_fig, theta_history, dtheta_history, tau_history, t_final, ticks_per_sec
+        )
+        
+        self.anim: Optional[animation.FuncAnimation] = None
+        
+        self.artists = self.arm_anim.artists + self.angle_anim.artists
+        
+        self.paused = False
+        self.fig.canvas.mpl_connect('key_press_event', self.key_press)
+
+        self.pbar: Optional[tqdm] = None
+    
+    def key_press(self, event):
+        if event.key == " " and self.anim is not None:
+            if self.paused:
+                self.anim.resume()
+            else:
+                self.anim.pause()
+            self.paused = not self.paused
+
+    def animation_init(self):
+        return self.artists
+    
+    def animation_tick(self, frame_num: int):
+        if self.pbar is not None:
+            self.pbar.update(1)
+            if frame_num + self.step >= self.total_ticks:
+                self.pbar.close()
+        self.arm_anim.update(frame_num)
+        self.angle_anim.update(frame_num)
         return self.artists
 
     def animate(self, use_mp4: bool, filepath: str, fps: int):
@@ -201,41 +288,3 @@ class ArmAnimation:
             self.anim.save(filepath, writer=writer, dpi=250)
         else:
             plt.show()
-
-
-def angle_plots(theta_history, dtheta_history, tau_history,
-                t_final, ticks_per_sec, filename, do_tau: bool):
-    """
-    Plots theta and d_theta over time, given the video parameters.
-    Setting do_tau also plots tau over time.
-    """
-    subplot = (3, 1) if do_tau else (2, 1)
-
-    N = int(t_final * ticks_per_sec)
-    times = np.array(range(N)) / ticks_per_sec
-    jointcount = len(theta_history[:,0])
-
-    plt.figure(1)
-    plt.subplot(*subplot, 1)
-    plt.plot(times, theta_history.T)
-    plt.legend([f"theta_{i+1}" for i in range(jointcount)], loc="upper right")
-    # plt.xlabel("time [s]")
-    plt.ylabel("angle [rad]")
-    
-    
-    plt.subplot(*subplot, 2)
-    plt.plot(times, dtheta_history.T)
-    plt.legend([f"dtheta_{i+1}" for i in range(jointcount)], loc="upper right")
-    plt.ylabel("velocity [rad/s]")
-    if not do_tau:
-        plt.xlabel("time [s]")
-
-    if do_tau:
-        plt.subplot(*subplot, 3)
-        plt.plot(times, tau_history.T)
-        plt.legend([f"tau_{i+1}" for i in range(jointcount)], loc="upper right")
-        plt.ylabel("torque [Nm]")
-        plt.xlabel("time [s]")
-
-    plt.suptitle(f"Plots for {filename}")
-    plt.show()

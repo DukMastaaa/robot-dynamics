@@ -37,7 +37,7 @@ def export_data(dump_filename: str, t_final: float, ticks_per_sec: float,
         np.save(file, tau_history)
 
 
-def import_data(dump_filename: str) -> tuple[float, float, np.ndarray, np.ndarray, np.ndarray]:
+def import_data(dump_filename: str) -> tuple[float, int, np.ndarray, np.ndarray, np.ndarray]:
     with open(dump_filename, "rb") as file:
         t_final, ticks_per_sec = np.load(file)
         theta_history = np.load(file)
@@ -68,44 +68,42 @@ def main():
     atlas.set_end_effector_mass(geared_params, 0.5, atlas.mm_to_m(100))
     atlas.set_gear_ratios(geared_params, [10, 25, 25, 5, 15])
     
-    thetalist0 = np.zeros(5)
-    dthetalist0 = np.zeros(5)
+    # thetalist0 = np.zeros(5)
+    # dthetalist0 = np.zeros(5)
     
-    traj_function = lambda t: np.zeros(5)
+    # traj_function = lambda t: np.zeros(5)
     
-    kp = np.array([1, 1, 1, 1, 1]) * 75
-    ki = np.array([1, 1, 1, 1, 1]) * 0
-    kd = np.array([1, 1, 1, 1, 1]) * 75
-    damping_coefficient = 2
+    # kp = np.array([1, 1, 1, 1, 1]) * 75
+    # ki = np.array([1, 1, 1, 1, 1]) * 0
+    # kd = np.array([1, 1, 1, 1, 1]) * 75
+    # damping_coefficient = 2
     
-    tau_function = tau_function_from_pid(kp, ki, kd, damping_coefficient, geared_params["torque_limits"], traj_function)
+    # tau_function = tau_function_from_pid(kp, ki, kd, damping_coefficient, geared_params["torque_limits"], traj_function)
     
-    t_final = 20
-    ticks_per_sec = 30
+    # t_final = 20
+    # ticks_per_sec = 30
 
-    theta_history, dtheta_history, tau_history = run_sim(
-        geared_params, thetalist0, dthetalist0, tau_function, t_final, ticks_per_sec
-    )
-    
-    angle_plots(theta_history, dtheta_history, tau_history, t_final, ticks_per_sec, "", True)
+    # theta_history, dtheta_history, tau_history = run_sim(
+    #     geared_params, thetalist0, dthetalist0, tau_function, t_final, ticks_per_sec
+    # )
 
     filename = "backup.npy"
-    export_data(filename, t_final, ticks_per_sec, theta_history, dtheta_history, tau_history)
-    # t_final, ticks_per_sec, theta_history, dtheta_history, tau_history = import_data(filename)
+    # export_data(filename, t_final, ticks_per_sec, theta_history, dtheta_history, tau_history)
+    t_final, ticks_per_sec, theta_history, dtheta_history, tau_history = import_data(filename)
 
     fps = 24
     title = "uhhhhhh"
-    # use_mp4 = False
-    use_mp4 = True
-    mp4_filename = "osc.mp4"
+    use_mp4 = False
+    # use_mp4 = True
+    mp4_filename = "animtest.mp4"
     
-    anim = ArmAnimation(
-        theta_history,
+    anim = FullAnimation(
+        None,
+        theta_history, dtheta_history, tau_history,
         t_final, ticks_per_sec,
         geared_params["Mlink_list"], geared_params["Mrotor_list"], geared_params["Slist"],
-        title
+        "beans"
     )
-    
     anim.animate(use_mp4, mp4_filename, fps)
 
 
