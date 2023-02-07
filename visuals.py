@@ -1,3 +1,4 @@
+import functools
 import itertools
 from typing import Optional
 import numpy as np
@@ -22,6 +23,7 @@ class AnglePlot:
     def __init__(self,
                  theta_axis: axes.Axes, dtheta_axis: axes.Axes, tau_axis: axes.Axes,
                  theta_history: np.ndarray, dtheta_history: np.ndarray, tau_history: np.ndarray,
+                 torque_limits: np.ndarray,
                  t_final: float, ticks_per_sec: int):
         self.theta_history = theta_history
         self.dtheta_history = dtheta_history
@@ -46,14 +48,20 @@ class AnglePlot:
             axis.set_ylabel(ylabel)
 
         self.tau_axis.set_xlabel("time [s]")
-        
+        unique_torque_limits = set(torque_limits)
+        for limit in unique_torque_limits:
+            self.tau_axis.plot([0, self.end_time], [-limit, -limit], color="gray", linestyle="dashed")
+            self.tau_axis.plot([0, self.end_time], [limit, limit], color="gray", linestyle="dashed")
+
         mock_data = np.zeros((1, 5))
         self.theta_plots = self.theta_axis.plot([0], mock_data)
         self.dtheta_plots = self.dtheta_axis.plot([0], mock_data)
         self.tau_plots = self.tau_axis.plot([0], mock_data)
+        
+        self.plotlists = (self.theta_plots, self.dtheta_plots, self.tau_plots)
 
-        labels = [f"joint {i+1}" for i in range(self.joint_count)]
-        # self.legend = self.fig.legend(
+        # labels = [f"joint {i+1}" for i in range(self.joint_count)]
+        # self.legend = self.legend(
         #     labels, loc='lower right', bbox_to_anchor=(1,-0.1), ncol=len(labels), bbox_transform=self.fig.transFigure
         # )
 
@@ -69,7 +77,7 @@ class AnglePlot:
                 axis.set_xbound(0, self.end_time)
                 axis.set_ybound(lower, upper)
         time = self.time_values[:index+1]
-        for plots, history in zip((self.theta_plots, self.dtheta_plots, self.tau_plots), self.histories):
+        for plots, history in zip(self.plotlists, self.histories):
             for i, plot in enumerate(plots):
                 plot.set_data(time, history[i,:index+1])
 
@@ -195,7 +203,10 @@ class ArmAnimation:
         for T, framedraw in zip(internal_frames, self.internal_frames_to_draw):
             framedraw.update(T)
         # update link line
-        origins = np.array([(T @ [0, 0, 0, 1])[:3] for T in joint_frames])
+        origins = np.array(
+            [(T @ [0, 0, 0, 1])[:3] for T in joint_frames] + \
+                [(internal_frames[-1] @ [0, 0, 0, 1])[:3]]
+        )
         set_plot3d_data(self.link_line, *origins.T)
     
     def update(self, frame_num: int):
@@ -213,6 +224,7 @@ class ArmAnimation:
 class FullAnimation:
     def __init__(self, fig: Optional[matplotlib.figure.Figure],
                  theta_history: np.ndarray, dtheta_history: np.ndarray, tau_history: np.ndarray,
+                 torque_limits: np.ndarray,
                  t_final: float, ticks_per_sec: int,
                  Mlink_list: np.ndarray, Mrotor_list: np.ndarray, Slist: np.ndarray,
                  title: str):
@@ -253,12 +265,22 @@ class FullAnimation:
         )
         self.angle_anim = AnglePlot(
             self.axd["theta"], self.axd["dtheta"], self.axd["tau"],
-            theta_history, dtheta_history, tau_history, t_final, ticks_per_sec
+            theta_history, dtheta_history, tau_history, torque_limits, t_final, ticks_per_sec
+        )
+        
+        labels = [f"joint {i+1}" for i in range(len(theta_history[:,0]))]
+        self.legend = self.fig.legend(
+            handles=functools.reduce(lambda x, y: x+y, self.angle_anim.plotlists),
+            labels=labels,
+            loc='upper center',
+            # bbox_to_anchor=(1,-0.1),
+            # bbox_transform=self.fig.transFigure,
+            ncol=len(labels),
         )
         
         self.anim: Optional[animation.FuncAnimation] = None
         
-        self.artists = self.arm_anim.artists + self.angle_anim.artists
+        self.artists = self.arm_anim.artists + self.angle_anim.artists + (self.legend,)
         
         self.paused = False
         self.fig.canvas.mpl_connect('key_press_event', self.key_press)

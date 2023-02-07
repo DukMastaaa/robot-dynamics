@@ -140,6 +140,9 @@ torque_lim_2 = NEMA23_HOLDING_TORQUE
 m3_rotor = NEMA17_MASS_TOTAL
 moi3_rotor = NEMA17_MOI
 torque_lim_3 = NEMA17_HOLDING_TORQUE
+# m3_rotor = NEMA23_MASS_TOTAL
+# moi3_rotor = NEMA23_MOI
+# torque_lim_3 = NEMA23_HOLDING_TORQUE
 
 m4_rotor = NEMA17_MASS_TOTAL
 moi4_rotor = NEMA17_MOI
